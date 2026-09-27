@@ -4,7 +4,7 @@ members = [
     "cli",
     "internal/cougr-core-circuits",
     "internal/cougr-core-session",
-    "internal/cougr-core-test",
+    "internal/cougr-core-test", "studio/fixtures/contract",
 ]
 resolver = "2"
 
