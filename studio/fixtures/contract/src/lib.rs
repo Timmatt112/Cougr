@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, Env, Symbol, contracterror};
+use soroban_sdk::{Env, Symbol, contract, contracterror, contractimpl, contracttype};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -46,8 +46,10 @@ impl FixtureContract {
         if config.win_length < 3 || config.win_length > min_dim {
             return Err(Error::InvalidWinLength);
         }
-        
-        env.storage().instance().set(&Symbol::new(&env, "config"), &config);
+
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, "config"), &config);
         Ok(())
     }
 }

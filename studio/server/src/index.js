@@ -1,8 +1,8 @@
 import express from 'express';
 import cors from 'cors';
+import crypto from 'crypto';
 import { Keypair } from '@stellar/stellar-sdk';
-import { rpc, TransactionBuilder, Networks, TimeoutInfinite, SorobanDataBuilder, xdr, Contract, scValToNative, nativeToScVal } from '@stellar/stellar-sdk';
-import fetch from 'node-fetch'; // if needed, but fetch is global in Node 18+
+import { rpc, TransactionBuilder, Networks, TimeoutInfinite, xdr, Contract, nativeToScVal } from '@stellar/stellar-sdk';
 
 // This service is testnet-only.
 export function createServer(options = {}) {
@@ -17,6 +17,20 @@ export function createServer(options = {}) {
 
   // In-memory store for session keys (expiry logic could be added)
   const sessions = new Map();
+
+  // Periodic sweep to enforce session expiry
+  const sweepInterval = setInterval(() => {
+    const now = Date.now();
+    for (const [id, session] of sessions.entries()) {
+      if (now > session.expiresAt) {
+        sessions.delete(id);
+      }
+    }
+  }, 1000 * 60 * 5); // sweep every 5 minutes
+  
+  if (sweepInterval.unref) {
+    sweepInterval.unref();
+  }
 
   app.post('/api/session', async (req, res) => {
     try {
@@ -53,32 +67,47 @@ export function createServer(options = {}) {
         return res.status(500).json({ error: 'friendbot limit or failure' });
       }
 
-      // Store session
-      const sessionId = keypair.secret(); // In a real app this would be a random token, and the keypair stored server-side.
+      // Store session securely with an opaque token
+      const sessionId = crypto.randomBytes(32).toString('hex');
       sessions.set(sessionId, {
         keypair,
         expiresAt: Date.now() + 1000 * 60 * 60, // 1 hour
       });
 
       // Submit reconfigure to deployed match
-      // For the fixture contract, we'd build a transaction calling `init`
       try {
         const sourceAccount = await serverRpc.getAccount(publicKey);
         const contract = new Contract(contractId);
         
-        const firstPlayerScVal = xdr.ScVal.scvSymbol(fp === 'x' ? 'X' : 'O');
+        // TurnBasedConfig is a struct. We encode it as an ScMap.
+        // Map keys must be sorted alphabetically
+        const turnBasedConfigVal = xdr.ScVal.scvMap([
+          new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('board_height'), val: nativeToScVal(bh, { type: 'u32' }) }),
+          new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('board_width'), val: nativeToScVal(bw, { type: 'u32' }) }),
+          new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('first_player'), val: xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(fp === 'x' ? 'X' : 'O')]) }),
+          new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('win_length'), val: nativeToScVal(wl, { type: 'u32' }) })
+        ]);
         
-        // Construct TurnBasedConfig
-        // TurnBasedConfig is a struct, but wait, the rust enum is X/O. 
-        // We will represent this as map or array? Let's just create a generic function call
-        // Depending on Soroban Rust SDK struct representation, it could be an Map or a Tuple. Let's just mock the RPC for now or assume it's natively handled if this were fully wired.
-        // Actually the issue just says "mocked-rpc tests". 
-        
-        // This is a minimal implementation to satisfy requirements
+        const tx = new TransactionBuilder(sourceAccount, {
+          fee: '10000',
+          networkPassphrase,
+        })
+          .addOperation(contract.call("init", turnBasedConfigVal))
+          .setTimeout(TimeoutInfinite)
+          .build();
+
+        const preparedTx = await serverRpc.prepareTransaction(tx);
+        preparedTx.sign(keypair);
+
+        const txResp = await serverRpc.sendTransaction(preparedTx);
+        if (txResp.status === "ERROR") {
+          throw new Error(`Tx submitted with error: ${txResp.errorResultXdr}`);
+        }
       } catch (err) {
         return res.status(502).json({ error: 'rpc failure', detail: err.message });
       }
 
+      // Do NOT send the keypair.secret() to the client!
       res.json({ sessionId, contractId });
     } catch (err) {
       res.status(500).json({ error: 'internal server error' });
