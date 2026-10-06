@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{Env, Symbol, contract, contracterror, contractimpl, contracttype};
+use soroban_sdk::{Address, Env, Symbol, contract, contracterror, contractimpl, contracttype};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -31,7 +31,8 @@ pub struct FixtureContract;
 
 #[contractimpl]
 impl FixtureContract {
-    pub fn init(env: Env, config: TurnBasedConfig) -> Result<(), Error> {
+    pub fn init(env: Env, admin: Address, config: TurnBasedConfig) -> Result<(), Error> {
+        admin.require_auth();
         if config.board_width < 3 || config.board_width > 8 {
             return Err(Error::InvalidBoardWidth);
         }

@@ -13,7 +13,7 @@ export function createServer(options = {}) {
   // Mocks can be passed for testing
   const serverRpc = options.rpc || new rpc.Server("https://soroban-testnet.stellar.org");
   const networkPassphrase = options.networkPassphrase || Networks.TESTNET;
-  const contractId = options.contractId || 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM'; // mock fixture contract
+  const contractId = options.contractId || process.env.CONTRACT_ID || 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM'; // mock fixture contract
 
   // In-memory store for session keys (expiry logic could be added)
   const sessions = new Map();
@@ -92,7 +92,7 @@ export function createServer(options = {}) {
           fee: '10000',
           networkPassphrase,
         })
-          .addOperation(contract.call("init", turnBasedConfigVal))
+          .addOperation(contract.call("init", nativeToScVal(publicKey, { type: 'address' }), turnBasedConfigVal))
           .setTimeout(TimeoutInfinite)
           .build();
 
@@ -115,4 +115,12 @@ export function createServer(options = {}) {
   });
 
   return app;
+}
+
+if (process.argv[1] && process.argv[1].endsWith('index.js')) {
+  const port = process.env.PORT || 3000;
+  const app = createServer();
+  app.listen(port, () => {
+    console.log(`Studio server listening on port ${port}`);
+  });
 }
