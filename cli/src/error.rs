@@ -15,8 +15,8 @@ pub enum CliError {
     /// The studio turn-based configuration is malformed or outside its bounds.
     InvalidConfig { reason: String },
 
-    /// The target directory already exists.
-    TargetExists { path: PathBuf },
+    /// The target path already exists (as a file or a directory).
+    TargetExists { path: PathBuf, is_file: bool },
 
     /// A filesystem operation failed.
     Io {
@@ -65,8 +65,9 @@ impl CliError {
             CliError::InvalidConfig { .. } => Some(
                 "use board_width and board_height in 3..=8, and win_length in 3..=min(width, height)".to_string(),
             ),
-            CliError::TargetExists { path } => Some(format!(
-                "pick a different name, or remove `{}` first",
+            CliError::TargetExists { path, is_file } => Some(format!(
+                "pick a different name, or remove the {} `{}` first",
+                if *is_file { "file" } else { "directory" },
                 path.display()
             )),
             CliError::Io { .. } => None,
@@ -78,7 +79,11 @@ impl CliError {
             CliError::UnknownPiece { .. } => {
                 Some("run `cougr add --list` to see available pieces".to_string())
             }
-            CliError::InvalidProject { .. } | CliError::PieceConflict { .. } => None,
+            CliError::InvalidProject { .. } => Some(
+                "run `cougr add` from inside a project created with `cougr new`"
+                    .to_string(),
+            ),
+            CliError::PieceConflict { .. } => None,
             CliError::MissingPieceAsset { .. } => Some(
                 "this is a bug in cougr-cli - please report it at https://github.com/salazarsebas/Cougr/issues"
                     .to_string(),
@@ -94,9 +99,12 @@ impl fmt::Display for CliError {
                 write!(f, "`{name}` is not a valid project name: {reason}")
             }
             CliError::InvalidConfig { reason } => write!(f, "invalid turn-based config: {reason}"),
-            CliError::TargetExists { path } => {
-                write!(f, "target directory `{}` already exists", path.display())
-            }
+            CliError::TargetExists { path, is_file } => write!(
+                f,
+                "target {} `{}` already exists",
+                if *is_file { "file" } else { "directory" },
+                path.display()
+            ),
             CliError::Io {
                 action,
                 path,

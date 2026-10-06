@@ -47,7 +47,10 @@ fn run_with_config(
     let target = parent.join(name.crate_name());
 
     if target.exists() {
-        return Err(CliError::TargetExists { path: target });
+        return Err(CliError::TargetExists {
+            is_file: target.is_file(),
+            path: target,
+        });
     }
 
     // Non-fatal environment advisory: warn before writing the project tree so
@@ -155,7 +158,38 @@ mod tests {
         fs::create_dir(dir.path().join("demo")).unwrap();
 
         let err = run("demo", Template::Starter, Some(dir.path())).unwrap_err();
-        assert!(matches!(err, CliError::TargetExists { .. }));
+        assert!(matches!(err, CliError::TargetExists { is_file: false, .. }));
+        let msg = err.to_string();
+        assert!(
+            msg.contains("directory"),
+            "message should say 'directory': {msg}"
+        );
+        let hint = err.hint().unwrap();
+        assert!(
+            hint.contains("directory"),
+            "hint should say 'directory': {hint}"
+        );
+    }
+
+    #[test]
+    fn refuses_to_overwrite_an_existing_file() {
+        let dir = tempdir();
+        fs::write(dir.path().join("demo"), b"artifact").unwrap();
+
+        let err = run("demo", Template::Starter, Some(dir.path())).unwrap_err();
+        assert!(matches!(err, CliError::TargetExists { is_file: true, .. }));
+        let msg = err.to_string();
+        assert!(msg.contains("file"), "message should say 'file': {msg}");
+        assert!(
+            !msg.contains("directory"),
+            "message must not say 'directory': {msg}"
+        );
+        let hint = err.hint().unwrap();
+        assert!(hint.contains("file"), "hint should say 'file': {hint}");
+        assert!(
+            !hint.contains("directory"),
+            "hint must not say 'directory': {hint}"
+        );
     }
 
     #[test]
