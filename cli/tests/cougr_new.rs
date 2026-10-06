@@ -202,6 +202,28 @@ fn add_outside_a_project_reports_the_error_and_a_hint() {
     );
 }
 
+#[test]
+fn add_with_path_from_outside_the_project() {
+    let dir = tempfile::tempdir().unwrap();
+    let generated = generate("demo", "starter", dir.path());
+    assert!(generated.status.success(), "{}", stderr(&generated));
+    let project = dir.path().join("demo");
+
+    // `--path` lets `cougr add` target the generated project while the process
+    // runs from outside it: `current_dir` is the tempdir that holds `demo`.
+    let added = Command::new(env!("CARGO_BIN_EXE_cougr"))
+        .args(["add", "session-auth", "--path"])
+        .arg(&project)
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(added.status.success(), "{}", stderr(&added));
+    assert!(project.join("src/session_auth.rs").is_file());
+    assert!(std::fs::read_to_string(project.join("src/lib.rs"))
+        .unwrap()
+        .contains("pub mod session_auth;"));
+}
+
 /// Compile every template against the published `cougr-core`.
 ///
 /// Ignored by default because it downloads and compiles the Soroban SDK.
